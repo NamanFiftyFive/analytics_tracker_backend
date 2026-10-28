@@ -1,0 +1,6 @@
+# Test-only tools (not installed in the Docker image, which uses requirements.txt).
+-r requirements.txt
+pytest>=8.3
+pytest-asyncio>=1.0
+httpx>=0.27
+pytest-cov>=6.0

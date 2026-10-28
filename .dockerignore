@@ -1,0 +1,17 @@
+# Kept out of the build context: secrets, local tooling, docs. The Dockerfile copies only
+# requirements.txt, app/, scripts/ and migrations/.
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/
+.idea/
+.DS_Store
+*.md
+schema.sql
+Dockerfile
+.dockerignore
+docker-compose.yml
+scripts/*.sh

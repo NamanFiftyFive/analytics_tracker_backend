@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Read(**/.env)",
+      "Edit(**/.env)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.claude/settings.local.json)",
+      "Edit(/.claude/hooks/**)",
+      "Edit(/schema.sql)",
+      "Bash(sudo *)",
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(dropdb *)",
+      "Bash(dbmate drop*)"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "Bash(dbmate rollback*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker compose down -v*)",
+      "Bash(.venv/bin/pip install*)",
+      "Bash(pip install*)"
+    ],
+    "allow": [
+      "Bash(.venv/bin/pytest*)",
+      "Bash(dbmate status)",
+      "Bash(npx --yes pyright --pythonpath .venv/bin/python app)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" pre",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" post",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\" stop",
+            "timeout": 300,
+            "statusMessage": "Running backend tests before finishing..."
+          }
+        ]
+      }
+    ]
+  }
+}

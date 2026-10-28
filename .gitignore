@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code: personal settings and the guard hook marker (team settings in .claude/settings.json ARE committed)
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/.dirty
+.coverage
+htmlcov/
