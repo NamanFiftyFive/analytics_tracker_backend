@@ -2,10 +2,20 @@
 
 Set before any app module is imported: app.core.config reads settings once, and an environment
 variable beats the value in .env. So the whole app (db pool included) points at the test database.
+The server is always the local Postgres, even when .env points at a hosted one (e.g. Supabase);
+override with TEST_POSTGRES_HOST / _PORT / _USER / _PASSWORD.
 """
 
 import os
 
+TEST_DATABASE = {
+    "POSTGRES_HOST": "localhost",
+    "POSTGRES_PORT": "5432",
+    "POSTGRES_USER": "hackathon",
+    "POSTGRES_PASSWORD": "local",  # local Postgres uses trust auth, so any value works
+}
+for name, default in TEST_DATABASE.items():
+    os.environ[name] = os.environ.get(f"TEST_{name}", default)
 os.environ["POSTGRES_DB"] = "hackathon_2026_test"
 
 import subprocess  # noqa: E402

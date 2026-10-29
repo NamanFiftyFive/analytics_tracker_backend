@@ -13,5 +13,4 @@ __pycache__/
 schema.sql
 Dockerfile
 .dockerignore
-docker-compose.yml
 scripts/*.sh

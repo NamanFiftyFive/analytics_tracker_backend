@@ -6,7 +6,8 @@ Full docs: `README.md` (read only the section you need). Schema snapshot: `schem
 ## Stack and environment
 - FastAPI + Python 3.14, **raw SQL via asyncpg** (no ORM, no SQLAlchemy/Alembic). Migrations: **dbmate**, plain `.sql`.
 - **Local first**: Homebrew Postgres 14 on :5432, DB `hackathon_2026`, role `hackathon`.
-- **Docker** (`docker-compose.yml` here in `backend/`, project name `analytics`): db `postgres:14-alpine` on host :5433 (volume `analytics_pgdata14`) → `migrate` (dbmate up, exits) → `api` on :8000. Same image for migrate + api. Old PG16 volume `hackathon_2026_pgdata` is unused; delete only if the user says so.
+- **Database**: Supabase (session pooler, settings in `.env`) for the hackathon; local Homebrew Postgres still works by switching `.env` back. Tests always use local Postgres.
+- **Docker**: one container from `Dockerfile` (API + migrations + dbmate), no compose; DB stays outside. Old Docker volumes `analytics_pgdata14` / `hackathon_2026_pgdata` are unused; delete only if the user says so.
 - `.env` lives in `backend/` (loaded by `app/core/config.py` via absolute path). `.env.example` has the same keys with placeholder secrets (keep in sync when adding settings).
 - Run everything from `backend/` with the venv: `.venv/bin/python`, `.venv/bin/uvicorn app.main:app --reload`.
 - nginx: user sets it up themselves from `~/Desktop/nginx_setup_guide.md`; don't configure it unless asked.
@@ -15,7 +16,7 @@ Full docs: `README.md` (read only the section you need). Schema snapshot: `schem
 - API: `.venv/bin/uvicorn app.main:app --reload` → http://localhost:8000/docs
 - Migrations: `dbmate new <name>`, `dbmate up`, `dbmate rollback`, `dbmate status` (one table/change per file; never edit applied ones)
 - Super admin: `.venv/bin/python -m scripts.create_superadmin <email> [--revoke]` (CLI only, no API)
-- Docker: `docker compose up -d --build`; copy local data once: `scripts/copy_local_db_to_docker.sh`
+- Docker: `docker build -t analytics-api .` + `docker run -d --name analytics_api --env-file .env -p 8000:8000 analytics-api` (README "Docker"). Migrations on Supabase: the user runs them themselves.
 - Tests: `.venv/bin/pytest` (pytest + httpx in memory, DB `hackathon_2026_test`, truncated before each test; see README "Tests"). 197 tests, ~98% coverage, all green. Add tests with every feature.
 - Type check: `npx --yes pyright --pythonpath .venv/bin/python app` (keep at 0 errors)
 - Test on port **8001** (user's own server uses 8000); use `@demo-hack.io` test emails and delete them afterwards.
@@ -40,7 +41,7 @@ Full docs: `README.md` (read only the section you need). Schema snapshot: `schem
 - Access token 15 min, refresh token 7 days (rotated, stored hashed). `get_current_user` reloads the user every request.
 
 ## Status
-- Done: auth, orgs + members + roles, super admin API, response envelope, projects + API keys (`pk_live_…`, SHA-256 hashed, revoke not delete; `projects.allowed_origins`), Docker stack (local data copied in, verified end-to-end), `POST /ingest/batch` (per-event validation, idempotent by event id, bulk `unnest` upserts into persons/events/sessions/event_definitions; `IngestCorsMiddleware` for browsers), 20 migrations.
+- Done: auth, orgs + members + roles, super admin API, response envelope, projects + API keys (`pk_live_…`, SHA-256 hashed, revoke not delete; `projects.allowed_origins`), Docker image (single container, DB outside), `POST /ingest/batch` (per-event validation, idempotent by event id, bulk `unnest` upserts into persons/events/sessions/event_definitions; `IngestCorsMiddleware` for browsers), 20 migrations.
 - Flutter SDK done: `../event_tracker_analytics/` (FVM 3.47.0, Riverpod 3; see its README). Verified end-to-end against `/ingest/batch`.
 - Test app: `../tracker_test_app/` sends to project "Tracker Test App" (org "One"). Ingest-path fix: SDK defers calls made during widget build.
 - Mobile dashboard app: `../analytics_tracker/` (auth + bottom tabs done; see its CLAUDE.md).

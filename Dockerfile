@@ -1,5 +1,5 @@
 # API image: code + Python packages + migrations (+ dbmate to apply them). No data, no secrets:
-# settings come from environment variables (docker-compose passes backend/.env).
+# settings come from environment variables (`docker run --env-file .env`, or the host's settings when deployed).
 FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# dbmate binary, so this one image can also run the migrations (see the migrate service).
+# dbmate binary, so this one image can also run the migrations (`docker run ... analytics-api dbmate up`).
 COPY --from=ghcr.io/amacneil/dbmate:2 /usr/local/bin/dbmate /usr/local/bin/dbmate
 
 # Don't run as root: if the app is ever compromised, the attacker isn't root in the container.

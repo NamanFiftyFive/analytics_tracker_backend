@@ -23,10 +23,8 @@ backend/
 ├── schema.sql                # AUTO-GENERATED snapshot of the whole DB schema (don't edit)
 ├── Dockerfile                # API image (code + packages + migrations + dbmate), see "Docker"
 ├── .dockerignore             # keeps .env, .venv and docs out of the image
-├── docker-compose.yml        # whole stack in Docker: db + migrate + api, see "Docker"
 ├── scripts/
-│   ├── create_superadmin.py  # make a user the platform super admin (CLI only)
-│   └── copy_local_db_to_docker.sh  # copy all data from local Postgres into the Docker one
+│   └── create_superadmin.py  # make a user the platform super admin (CLI only)
 ├── tests/                    # pytest, against the separate hackathon_2026_test database
 │   ├── conftest.py           # test DB setup (migrate, empty before each test), client fixture
 │   ├── helpers.py            # AuthActions (register, login), OrgActions, ProjectActions
@@ -607,6 +605,8 @@ device clock stored twice (`test_ingest.py`), `range=today` compared with the wr
 
 - **Separate database.** Tests use `hackathon_2026_test`, never `hackathon_2026`. `tests/conftest.py`
   sets `POSTGRES_DB` before the app loads, and refuses to run if the name doesn't end in `_test`.
+- **Always local Postgres.** The tests use `localhost:5432` as `hackathon` even when `.env` points at a hosted
+  database (Supabase); set `TEST_POSTGRES_HOST` / `_PORT` / `_USER` / `_PASSWORD` to use another server.
 - **Always the current schema.** Each run starts with `dbmate up` on the test database, using the same migrations.
 - **Each test starts empty.** Every table is truncated before each test, so tests don't depend on each other.
 - **No server needed.** `httpx` calls the app in memory (`ASGITransport`), with the real middleware and
@@ -640,68 +640,44 @@ npx --yes pyright --pythonpath .venv/bin/python app
 
 ## Docker
 
-The whole stack runs from `backend/docker-compose.yml`, so run the commands from `backend/` like everything else.
-It reads the same `.env`; compose only overrides what differs inside Docker (database host).
+One container: the API, built from `backend/Dockerfile`. The database stays outside it (Supabase, or your local
+Postgres), and all settings come from `.env` when the container starts. Run the commands from `backend/`.
 
-```
-docker compose up
-   │
-   ├─ db        postgres:14-alpine, host port 5433 ──▶ volume "analytics_pgdata14" (the data)
-   │              │ healthy
-   ├─ migrate   analytics-api image, runs `dbmate up`, then exits
-   │              │ finished OK
-   └─ api       analytics-api image, uvicorn on host port 8000
-```
+| What | Where it lives |
+|---|---|
+| Code, packages, migrations, dbmate | the `analytics-api` image (rebuild after every code change) |
+| Data | the database set in `.env` (Supabase or local Postgres), never in the container |
+| Secrets (`.env`) | your machine / the host's environment variables; never in the image |
 
-| What | Where it lives | Survives rebuild / `down`? |
-|---|---|---|
-| Code, packages, migrations | the `analytics-api` image (built from `backend/Dockerfile`) | rebuilt with `--build` |
-| Database files | the `analytics_pgdata14` volume | ✅ yes; only `down -v` or `docker volume rm` deletes it |
-| Secrets (`.env`) | your machine only; never in the image | — |
+**With Supabase** (`.env` points at the Supabase session pooler):
 
 ```bash
-cd ~/Desktop/hackathon_2026/backend
+docker build -t analytics-api .                                   # again after every code change
+docker run -d --name analytics_api --env-file .env -p 8000:8000 --restart unless-stopped analytics-api
+docker logs -f analytics_api                                      # follow API logs
+docker stop analytics_api && docker rm analytics_api              # stop and remove
 
-docker compose up -d --build          # build + start db, migrations, api  → http://localhost:8000/docs
-docker compose ps -a                  # status (migrate shows "exited (0)" = migrations done)
-docker compose logs -f api            # follow API logs
-docker compose down                   # stop and remove containers (data is kept)
+# Migrations on Supabase, only when you choose (uses DATABASE_URL):
+docker run --rm --env-file .env -e DBMATE_MIGRATIONS_DIR=/app/migrations -e DBMATE_NO_DUMP_SCHEMA=true analytics-api dbmate up
 
-docker compose exec api python -m scripts.create_superadmin you@example.com   # super admin in Docker
-docker compose exec db psql -U hackathon -d hackathon_2026                    # SQL shell in Docker
+# Super admin, from inside the running container:
+docker exec -it analytics_api python -m scripts.create_superadmin you@example.com
 ```
 
-Stop your local uvicorn first: both use port 8000. The Docker database is on **5433**
-(pgAdmin: `localhost:5433`), so it never touches the Homebrew one on 5432.
-
-**Just the API image, with your local Postgres** (no compose, no database container):
+**With your local Postgres** (`.env` points at `localhost`):
 
 ```bash
-docker build -t analytics-api .
 docker run -d --name analytics_api --env-file .env \
   -e POSTGRES_HOST=host.docker.internal -p 8000:8000 analytics-api
-docker logs -f analytics_api          # logs
-docker rm -f analytics_api            # stop and remove
 ```
 
 `host.docker.internal` is how a container reaches your Mac (`localhost` inside it means the container
-itself). `docker run --env-file` passes values exactly as written, quotes included, so keep `.env`
-values unquoted.
+itself). Stop your local uvicorn first: both use port 8000.
+`docker run --env-file` passes values exactly as written, quotes included, so keep `.env` values unquoted.
 
-**New migration:** create it locally as usual (`dbmate new ...`, `dbmate up`, which also updates
-`schema.sql`), then `docker compose up -d --build`; the migrate service applies it in Docker.
+**New migration:** create and apply it locally as usual (`dbmate new ...`, `dbmate up`, which also updates
+`schema.sql`), rebuild the image, then apply it to Supabase with the migration command above.
 
-**Copy your local data into Docker** (once, into an empty Docker database):
-
-```bash
-scripts/copy_local_db_to_docker.sh
-```
-
-It copies data only (the tables come from the migrations), refuses to run if the Docker database
-already has users, and prints row counts for both sides.
-
-**Sharing:** the image has no data and no secrets. Someone else needs the `backend/` folder (or the
-image plus `docker-compose.yml`), creates `.env` from `.env.example` with their own
-password and `JWT_SECRET_KEY`, and runs `docker compose up -d --build`. They start with an empty
-database. The image is built for this Mac's chip (arm64); servers usually need amd64
-(`docker buildx build --platform linux/amd64,linux/arm64 ...` when publishing).
+**Deploying** (Render, Railway, Fly.io, a VPS): the host builds this `Dockerfile` and gets the `.env` values as
+environment variables (set `DEBUG=false`). The image is built for this Mac's chip (arm64); servers usually
+need amd64 (`docker buildx build --platform linux/amd64 -t analytics-api .`).
